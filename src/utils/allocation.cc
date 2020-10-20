@@ -165,6 +165,7 @@ void* GetRandomMmapAddr() {
 void* AllocatePages(v8::PageAllocator* page_allocator, void* hint, size_t size,
                     size_t alignment, PageAllocator::Permission access) {
   DCHECK_NOT_NULL(page_allocator);
+  /** AlignedAddress操作：抛弃低位，保留高位 **/
   DCHECK_EQ(hint, AlignedAddress(hint, alignment));
   DCHECK(IsAligned(size, page_allocator->AllocatePageSize()));
   if (FLAG_randomize_all_allocations) {
@@ -212,10 +213,13 @@ bool OnCriticalMemoryPressure(size_t length) {
 
 VirtualMemory::VirtualMemory() = default;
 
+/** allocation.cc 中对于 VirtualMemory 的实现与 cppgc/virtual-memory.cc 中对于 VirtualMemory 的实现是一致的 **/
 VirtualMemory::VirtualMemory(v8::PageAllocator* page_allocator, size_t size,
                              void* hint, size_t alignment, JitPermission jit)
     : page_allocator_(page_allocator) {
   DCHECK_NOT_NULL(page_allocator);
+  /** Executable & Non_Executable chunksize & commitsize 都是以 CommitPageSize() 为对齐标准 **/
+  /** 此处检查是多检查了一遍，实际上MemoryAllocator调用此处已经对参数size做了对齐操作 **/
   DCHECK(IsAligned(size, page_allocator_->CommitPageSize()));
   size_t page_size = page_allocator_->AllocatePageSize();
   alignment = RoundUp(alignment, page_size);
