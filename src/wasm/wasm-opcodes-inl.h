@@ -297,8 +297,8 @@ constexpr const char* WasmOpcodes::OpcodeName(WasmOpcode opcode) {
     CASE_SIMDF_OP(Qfma, "qfma")
     CASE_SIMDF_OP(Qfms, "qfms")
 
-    CASE_S128_OP(LoadMem32Zero, "load32_zero")
-    CASE_S128_OP(LoadMem64Zero, "load64_zero")
+    CASE_S128_OP(Load32Zero, "load32_zero")
+    CASE_S128_OP(Load64Zero, "load64_zero")
     CASE_S128_OP(Load8Splat, "load8_splat")
     CASE_S128_OP(Load16Splat, "load16_splat")
     CASE_S128_OP(Load32Splat, "load32_splat")
@@ -347,6 +347,13 @@ constexpr const char* WasmOpcodes::OpcodeName(WasmOpcode opcode) {
     CASE_F64x2_OP(NearestInt, "nearest")
 
     CASE_I32x4_OP(DotI16x8S, "dot_i16x8_s")
+
+    CASE_SIGN_OP(I16x8, ExtMulLowI8x16, "extmul_low_i8x16")
+    CASE_SIGN_OP(I16x8, ExtMulHighI8x16, "extmul_high_i8x16")
+    CASE_SIGN_OP(I32x4, ExtMulLowI16x8, "extmul_low_i16x8")
+    CASE_SIGN_OP(I32x4, ExtMulHighI16x8, "extmul_high_i16x8")
+    CASE_SIGN_OP(I64x2, ExtMulLowI32x4, "extmul_low_i32x4")
+    CASE_SIGN_OP(I64x2, ExtMulHighI32x4, "extmul_high_i32x4")
 
     // Atomic operations.
     CASE_OP(AtomicNotify, "atomic.notify")

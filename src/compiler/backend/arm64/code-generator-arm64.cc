@@ -1139,12 +1139,50 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
     case kArm64Mul32:
       __ Mul(i.OutputRegister32(), i.InputRegister32(0), i.InputRegister32(1));
       break;
-    case kArm64Smull:
-      __ Smull(i.OutputRegister(), i.InputRegister32(0), i.InputRegister32(1));
+    case kArm64Smull: {
+      if (instr->InputAt(0)->IsRegister()) {
+        __ Smull(i.OutputRegister(), i.InputRegister32(0),
+                 i.InputRegister32(1));
+      } else {
+        DCHECK(instr->InputAt(0)->IsSimd128Register());
+        VectorFormat dst_f = VectorFormatFillQ(MiscField::decode(opcode));
+        VectorFormat src_f = VectorFormatHalfWidth(dst_f);
+        __ Smull(i.OutputSimd128Register().Format(dst_f),
+                 i.InputSimd128Register(0).Format(src_f),
+                 i.InputSimd128Register(1).Format(src_f));
+      }
       break;
-    case kArm64Umull:
-      __ Umull(i.OutputRegister(), i.InputRegister32(0), i.InputRegister32(1));
+    }
+    case kArm64Smull2: {
+      VectorFormat dst_f = VectorFormatFillQ(MiscField::decode(opcode));
+      VectorFormat src_f = VectorFormatHalfWidthDoubleLanes(dst_f);
+      __ Smull2(i.OutputSimd128Register().Format(dst_f),
+                i.InputSimd128Register(0).Format(src_f),
+                i.InputSimd128Register(1).Format(src_f));
       break;
+    }
+    case kArm64Umull: {
+      if (instr->InputAt(0)->IsRegister()) {
+        __ Umull(i.OutputRegister(), i.InputRegister32(0),
+                 i.InputRegister32(1));
+      } else {
+        DCHECK(instr->InputAt(0)->IsSimd128Register());
+        VectorFormat dst_f = VectorFormatFillQ(MiscField::decode(opcode));
+        VectorFormat src_f = VectorFormatHalfWidth(dst_f);
+        __ Umull(i.OutputSimd128Register().Format(dst_f),
+                 i.InputSimd128Register(0).Format(src_f),
+                 i.InputSimd128Register(1).Format(src_f));
+      }
+      break;
+    }
+    case kArm64Umull2: {
+      VectorFormat dst_f = VectorFormatFillQ(MiscField::decode(opcode));
+      VectorFormat src_f = VectorFormatHalfWidthDoubleLanes(dst_f);
+      __ Umull2(i.OutputSimd128Register().Format(dst_f),
+                i.InputSimd128Register(0).Format(src_f),
+                i.InputSimd128Register(1).Format(src_f));
+      break;
+    }
     case kArm64Madd:
       __ Madd(i.OutputRegister(), i.InputRegister(0), i.InputRegister(1),
               i.InputRegister(2));
@@ -2616,11 +2654,11 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       __ Uxtl(i.OutputSimd128Register().V2D(), i.OutputSimd128Register().V2S());
       break;
     }
-    case kArm64S128LoadMem32Zero: {
+    case kArm64S128Load32Zero: {
       __ Ldr(i.OutputSimd128Register().S(), i.MemoryOperand(0));
       break;
     }
-    case kArm64S128LoadMem64Zero: {
+    case kArm64S128Load64Zero: {
       __ Ldr(i.OutputSimd128Register().D(), i.MemoryOperand(0));
       break;
     }
@@ -3097,13 +3135,35 @@ void CodeGenerator::AssembleReturn(InstructionOperand* pop) {
 
 void CodeGenerator::FinishCode() { __ ForceConstantPoolEmissionWithoutJump(); }
 
-void CodeGenerator::PrepareForDeoptimizationExits(int deopt_count) {
+void CodeGenerator::PrepareForDeoptimizationExits(
+    ZoneDeque<DeoptimizationExit*>* exits) {
   __ ForceConstantPoolEmissionWithoutJump();
   // We are conservative here, assuming all deopts are lazy deopts.
   DCHECK_GE(Deoptimizer::kLazyDeoptExitSize,
             Deoptimizer::kNonLazyDeoptExitSize);
-  __ CheckVeneerPool(false, false,
-                     deopt_count * Deoptimizer::kLazyDeoptExitSize);
+  __ CheckVeneerPool(
+      false, false,
+      static_cast<int>(exits->size()) * Deoptimizer::kLazyDeoptExitSize);
+
+  // Check which deopt kinds exist in this Code object, to avoid emitting jumps
+  // to unused entries.
+  bool saw_deopt_kind[kDeoptimizeKindCount] = {false};
+  for (auto exit : *exits) {
+    saw_deopt_kind[static_cast<int>(exit->kind())] = true;
+  }
+
+  // Emit the jumps to deoptimization entries.
+  UseScratchRegisterScope scope(tasm());
+  Register scratch = scope.AcquireX();
+  STATIC_ASSERT(static_cast<int>(kFirstDeoptimizeKind) == 0);
+  for (int i = 0; i < kDeoptimizeKindCount; i++) {
+    if (!saw_deopt_kind[i]) continue;
+    __ bind(&jump_deoptimization_entry_labels_[i]);
+    __ LoadEntryFromBuiltinIndex(Deoptimizer::GetDeoptimizationEntry(
+                                     isolate(), static_cast<DeoptimizeKind>(i)),
+                                 scratch);
+    __ Jump(scratch);
+  }
 }
 
 void CodeGenerator::AssembleMove(InstructionOperand* source,

@@ -1171,7 +1171,10 @@ CompilationExecutionResult ExecuteCompilationUnits(
   std::shared_ptr<WireBytesStorage> wire_bytes;
   std::shared_ptr<const WasmModule> module;
   WasmEngine* wasm_engine;
-  int task_id = delegate ? delegate->GetTaskId() : 0;
+  // Task 0 is any main thread (there might be multiple from multiple isolates),
+  // worker threads start at 1 (thus the "+ 1").
+  int task_id = delegate ? (int{delegate->GetTaskId()} + 1) : 0;
+  DCHECK_LE(0, task_id);
   CompilationUnitQueues::Queue* queue;
   int unpublished_units_limit;
   base::Optional<WasmCompilationUnit> unit;
@@ -1507,7 +1510,7 @@ void CompileNativeModule(Isolate* isolate,
   }
 }
 
-class BackgroundCompileJob : public JobTask {
+class BackgroundCompileJob final : public JobTask {
  public:
   explicit BackgroundCompileJob(std::weak_ptr<NativeModule> native_module,
                                 std::shared_ptr<Counters> async_counters)
@@ -2641,12 +2644,6 @@ bool AsyncStreamingProcessor::Deserialize(Vector<const uint8_t> module_bytes,
   return true;
 }
 
-// TODO(wasm): Use the jobs API for wrapper compilation, remove this method.
-int GetMaxCompileConcurrency() {
-  int num_worker_threads = V8::GetCurrentPlatform()->NumberOfWorkerThreads();
-  return std::min(FLAG_wasm_num_compilation_tasks, num_worker_threads);
-}
-
 CompilationStateImpl::CompilationStateImpl(
     const std::shared_ptr<NativeModule>& native_module,
     std::shared_ptr<Counters> async_counters)
@@ -3112,9 +3109,6 @@ void CompilationStateImpl::PublishDetectedFeatures(Isolate* isolate) {
 
 void CompilationStateImpl::PublishCompilationResults(
     std::vector<std::unique_ptr<WasmCode>> unpublished_code) {
-  TRACE_EVENT1(TRACE_DISABLED_BY_DEFAULT("v8.wasm.detailed"),
-               "wasm.PublishCompilationResults", "num_results",
-               unpublished_code.size());
   if (unpublished_code.empty()) return;
 
   // For import wrapper compilation units, add result to the cache.
@@ -3183,7 +3177,7 @@ void CompilationStateImpl::SchedulePublishCompilationResults(
 }
 
 void CompilationStateImpl::ScheduleCompileJobForNewUnits() {
-  if (current_compile_job_ && current_compile_job_->IsRunning()) {
+  if (current_compile_job_ && current_compile_job_->IsValid()) {
     current_compile_job_->NotifyConcurrencyIncrease();
     return;
   }

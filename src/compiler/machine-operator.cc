@@ -32,15 +32,15 @@ std::ostream& operator<<(std::ostream& os, StoreRepresentation rep) {
   return os << rep.representation() << ", " << rep.write_barrier_kind();
 }
 
-size_t hash_value(LoadKind kind) { return static_cast<size_t>(kind); }
+size_t hash_value(MemoryAccessKind kind) { return static_cast<size_t>(kind); }
 
-std::ostream& operator<<(std::ostream& os, LoadKind kind) {
+std::ostream& operator<<(std::ostream& os, MemoryAccessKind kind) {
   switch (kind) {
-    case LoadKind::kNormal:
+    case MemoryAccessKind::kNormal:
       return os << "kNormal";
-    case LoadKind::kUnaligned:
+    case MemoryAccessKind::kUnaligned:
       return os << "kUnaligned";
-    case LoadKind::kProtected:
+    case MemoryAccessKind::kProtected:
       return os << "kProtected";
   }
   UNREACHABLE();
@@ -70,10 +70,10 @@ std::ostream& operator<<(std::ostream& os, LoadTransformation rep) {
       return os << "kS128Load32x2S";
     case LoadTransformation::kS128Load32x2U:
       return os << "kS128Load32x2U";
-    case LoadTransformation::kS128LoadMem32Zero:
-      return os << "kS128LoadMem32Zero";
-    case LoadTransformation::kS128LoadMem64Zero:
-      return os << "kS128LoadMem64Zero";
+    case LoadTransformation::kS128Load32Zero:
+      return os << "kS128Load32Zero";
+    case LoadTransformation::kS128Load64Zero:
+      return os << "kS128Load64Zero";
   }
   UNREACHABLE();
 }
@@ -425,6 +425,10 @@ ShiftKind ShiftKindOf(Operator const* op) {
   V(I64x2Mul, Operator::kCommutative, 2, 0, 1)                             \
   V(I64x2Eq, Operator::kCommutative, 2, 0, 1)                              \
   V(I64x2ShrU, Operator::kNoProperties, 2, 0, 1)                           \
+  V(I64x2ExtMulLowI32x4S, Operator::kCommutative, 2, 0, 1)                 \
+  V(I64x2ExtMulHighI32x4S, Operator::kCommutative, 2, 0, 1)                \
+  V(I64x2ExtMulLowI32x4U, Operator::kCommutative, 2, 0, 1)                 \
+  V(I64x2ExtMulHighI32x4U, Operator::kCommutative, 2, 0, 1)                \
   V(I32x4Splat, Operator::kNoProperties, 1, 0, 1)                          \
   V(I32x4SConvertF32x4, Operator::kNoProperties, 1, 0, 1)                  \
   V(I32x4SConvertI16x8Low, Operator::kNoProperties, 1, 0, 1)               \
@@ -453,6 +457,10 @@ ShiftKind ShiftKindOf(Operator const* op) {
   V(I32x4Abs, Operator::kNoProperties, 1, 0, 1)                            \
   V(I32x4BitMask, Operator::kNoProperties, 1, 0, 1)                        \
   V(I32x4DotI16x8S, Operator::kCommutative, 2, 0, 1)                       \
+  V(I32x4ExtMulLowI16x8S, Operator::kCommutative, 2, 0, 1)                 \
+  V(I32x4ExtMulHighI16x8S, Operator::kCommutative, 2, 0, 1)                \
+  V(I32x4ExtMulLowI16x8U, Operator::kCommutative, 2, 0, 1)                 \
+  V(I32x4ExtMulHighI16x8U, Operator::kCommutative, 2, 0, 1)                \
   V(I16x8Splat, Operator::kNoProperties, 1, 0, 1)                          \
   V(I16x8SConvertI8x16Low, Operator::kNoProperties, 1, 0, 1)               \
   V(I16x8SConvertI8x16High, Operator::kNoProperties, 1, 0, 1)              \
@@ -486,6 +494,10 @@ ShiftKind ShiftKindOf(Operator const* op) {
   V(I16x8Q15MulRSatS, Operator::kCommutative, 2, 0, 1)                     \
   V(I16x8Abs, Operator::kNoProperties, 1, 0, 1)                            \
   V(I16x8BitMask, Operator::kNoProperties, 1, 0, 1)                        \
+  V(I16x8ExtMulLowI8x16S, Operator::kCommutative, 2, 0, 1)                 \
+  V(I16x8ExtMulHighI8x16S, Operator::kCommutative, 2, 0, 1)                \
+  V(I16x8ExtMulLowI8x16U, Operator::kCommutative, 2, 0, 1)                 \
+  V(I16x8ExtMulHighI8x16U, Operator::kCommutative, 2, 0, 1)                \
   V(I8x16Splat, Operator::kNoProperties, 1, 0, 1)                          \
   V(I8x16Neg, Operator::kNoProperties, 1, 0, 1)                            \
   V(I8x16Shl, Operator::kNoProperties, 2, 0, 1)                            \
@@ -607,8 +619,8 @@ ShiftKind ShiftKindOf(Operator const* op) {
   V(S128Load16x4U)             \
   V(S128Load32x2S)             \
   V(S128Load32x2U)             \
-  V(S128LoadMem32Zero)         \
-  V(S128LoadMem64Zero)
+  V(S128Load32Zero)            \
+  V(S128Load64Zero)
 
 #define ATOMIC_U32_TYPE_LIST(V) \
   V(Uint8)                      \
@@ -790,24 +802,24 @@ struct ProtectedLoadOperator : public Operator1<LoadRepresentation> {
                   1, 1, 1, 1, 0, LoadRepresentation(rep, sem)) {}
 };
 
-template <LoadKind kind, LoadTransformation type>
+template <MemoryAccessKind kind, LoadTransformation type>
 struct LoadTransformOperator : public Operator1<LoadTransformParameters> {
   LoadTransformOperator()
       : Operator1(IrOpcode::kLoadTransform,
-                  kind == LoadKind::kProtected
+                  kind == MemoryAccessKind::kProtected
                       ? Operator::kNoDeopt | Operator::kNoThrow
                       : Operator::kEliminatable,
                   "LoadTransform", 2, 1, 1, 1, 1, 0,
                   LoadTransformParameters{kind, type}) {}
 };
 
-template <LoadKind kind, MachineRepresentation rep, MachineSemantic sem,
+template <MemoryAccessKind kind, MachineRepresentation rep, MachineSemantic sem,
           uint8_t laneidx>
 struct LoadLaneOperator : public Operator1<LoadLaneParameters> {
   LoadLaneOperator()
       : Operator1(
             IrOpcode::kLoadLane,
-            kind == LoadKind::kProtected
+            kind == MemoryAccessKind::kProtected
                 ? Operator::kNoDeopt | Operator::kNoThrow
                 : Operator::kEliminatable,
             "LoadLane", 3, 1, 1, 1, 1, 0,
@@ -840,7 +852,7 @@ struct ProtectedStoreOperator : public Operator1<StoreRepresentation> {
                   StoreRepresentation(rep, kNoWriteBarrier)) {}
 };
 
-template <LoadKind kind, MachineRepresentation rep, uint8_t laneidx>
+template <MemoryAccessKind kind, MachineRepresentation rep, uint8_t laneidx>
 struct StoreLaneOperator : public Operator1<StoreLaneParameters> {
   StoreLaneOperator()
       : Operator1(IrOpcode::kStoreLane,
@@ -1177,11 +1189,12 @@ const Operator* MachineOperatorBuilder::ProtectedLoad(LoadRepresentation rep) {
 }
 
 const Operator* MachineOperatorBuilder::LoadTransform(
-    LoadKind kind, LoadTransformation transform) {
-#define LOAD_TRANSFORM_KIND(TYPE, KIND)                                        \
-  if (kind == LoadKind::k##KIND && transform == LoadTransformation::k##TYPE) { \
-    return GetCachedOperator<LoadTransformOperator<                            \
-        LoadKind::k##KIND, LoadTransformation::k##TYPE>>();                    \
+    MemoryAccessKind kind, LoadTransformation transform) {
+#define LOAD_TRANSFORM_KIND(TYPE, KIND)                             \
+  if (kind == MemoryAccessKind::k##KIND &&                          \
+      transform == LoadTransformation::k##TYPE) {                   \
+    return GetCachedOperator<LoadTransformOperator<                 \
+        MemoryAccessKind::k##KIND, LoadTransformation::k##TYPE>>(); \
   }
 #define LOAD_TRANSFORM(TYPE)           \
   LOAD_TRANSFORM_KIND(TYPE, Normal)    \
@@ -1194,15 +1207,15 @@ const Operator* MachineOperatorBuilder::LoadTransform(
   UNREACHABLE();
 }
 
-const Operator* MachineOperatorBuilder::LoadLane(LoadKind kind,
+const Operator* MachineOperatorBuilder::LoadLane(MemoryAccessKind kind,
                                                  LoadRepresentation rep,
                                                  uint8_t laneidx) {
-#define LOAD_LANE_KIND(TYPE, KIND, LANEIDX)                      \
-  if (kind == LoadKind::k##KIND && rep == MachineType::TYPE() && \
-      laneidx == LANEIDX) {                                      \
-    return GetCachedOperator<LoadLaneOperator<                   \
-        LoadKind::k##KIND, MachineType::TYPE().representation(), \
-        MachineType::TYPE().semantic(), LANEIDX>>();             \
+#define LOAD_LANE_KIND(TYPE, KIND, LANEIDX)                              \
+  if (kind == MemoryAccessKind::k##KIND && rep == MachineType::TYPE() && \
+      laneidx == LANEIDX) {                                              \
+    return GetCachedOperator<LoadLaneOperator<                           \
+        MemoryAccessKind::k##KIND, MachineType::TYPE().representation(), \
+        MachineType::TYPE().semantic(), LANEIDX>>();                     \
   }
 
 #define LOAD_LANE_T(T, LANE)         \
@@ -1228,14 +1241,14 @@ const Operator* MachineOperatorBuilder::LoadLane(LoadKind kind,
   UNREACHABLE();
 }
 
-const Operator* MachineOperatorBuilder::StoreLane(LoadKind kind,
+const Operator* MachineOperatorBuilder::StoreLane(MemoryAccessKind kind,
                                                   MachineRepresentation rep,
                                                   uint8_t laneidx) {
-#define STORE_LANE_KIND(REP, KIND, LANEIDX)                             \
-  if (kind == LoadKind::k##KIND && rep == MachineRepresentation::REP && \
-      laneidx == LANEIDX) {                                             \
-    return GetCachedOperator<StoreLaneOperator<                         \
-        LoadKind::k##KIND, MachineRepresentation::REP, LANEIDX>>();     \
+#define STORE_LANE_KIND(REP, KIND, LANEIDX)                                 \
+  if (kind == MemoryAccessKind::k##KIND &&                                  \
+      rep == MachineRepresentation::REP && laneidx == LANEIDX) {            \
+    return GetCachedOperator<StoreLaneOperator<                             \
+        MemoryAccessKind::k##KIND, MachineRepresentation::REP, LANEIDX>>(); \
   }
 
 #define STORE_LANE_T(T, LANE)         \

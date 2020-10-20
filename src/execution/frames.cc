@@ -156,6 +156,13 @@ StackFrame* StackFrameIteratorBase::SingletonFor(StackFrame::Type type) {
 
 // -------------------------------------------------------------------------
 
+void TypedFrameWithJSLinkage::Iterate(RootVisitor* v) const {
+  IterateExpressions(v);
+  IteratePc(v, pc_address(), constant_pool_address(), LookupCode());
+}
+
+// -------------------------------------------------------------------------
+
 void JavaScriptFrameIterator::Advance() {
   do {
     iterator_.Advance();
@@ -656,8 +663,6 @@ StackFrame::Type StackFrame::GetCallerState(State* state) const {
   return ComputeType(iterator_, state);
 }
 
-Address StackFrame::UnpaddedFP() const { return fp(); }
-
 Address CommonFrame::GetCallerStackPointer() const {
   return fp() + CommonFrameConstants::kCallerSPOffset;
 }
@@ -1092,7 +1097,9 @@ bool JavaScriptFrame::HasInlinedFrames() const {
   return functions.size() > 1;
 }
 
-Code JavaScriptFrame::unchecked_code() const { return function().code(); }
+Code CommonFrameWithJSLinkage::unchecked_code() const {
+  return function().code();
+}
 
 int OptimizedFrame::ComputeParametersCount() const {
   Code code = LookupCode();
@@ -1125,7 +1132,12 @@ void JavaScriptFrame::GetFunctions(
   }
 }
 
-void JavaScriptFrame::Summarize(std::vector<FrameSummary>* functions) const {
+bool CommonFrameWithJSLinkage::IsConstructor() const {
+  return IsConstructFrame(caller_fp());
+}
+
+void CommonFrameWithJSLinkage::Summarize(
+    std::vector<FrameSummary>* functions) const {
   DCHECK(functions->empty());
   Code code = LookupCode();
   int offset = static_cast<int>(pc() - code.InstructionStart());
@@ -1150,7 +1162,7 @@ Object JavaScriptFrame::unchecked_function() const {
   return function_slot_object();
 }
 
-Object JavaScriptFrame::receiver() const { return GetParameter(-1); }
+Object CommonFrameWithJSLinkage::receiver() const { return GetParameter(-1); }
 
 Object JavaScriptFrame::context() const {
   const int offset = StandardFrameConstants::kContextOffset;
@@ -1163,7 +1175,7 @@ Script JavaScriptFrame::script() const {
   return Script::cast(function().shared().script());
 }
 
-int JavaScriptFrame::LookupExceptionHandlerInTable(
+int CommonFrameWithJSLinkage::LookupExceptionHandlerInTable(
     int* stack_depth, HandlerTable::CatchPrediction* prediction) {
   DCHECK(!LookupCode().has_handler_table());
   DCHECK(!LookupCode().is_optimized_code());
@@ -1258,11 +1270,11 @@ void JavaScriptFrame::CollectFunctionAndOffsetForICStats(JSFunction function,
   }
 }
 
-Object JavaScriptFrame::GetParameter(int index) const {
+Object CommonFrameWithJSLinkage::GetParameter(int index) const {
   return Object(Memory<Address>(GetParameterSlot(index)));
 }
 
-int JavaScriptFrame::ComputeParametersCount() const {
+int CommonFrameWithJSLinkage::ComputeParametersCount() const {
   DCHECK(can_access_heap_objects() &&
          isolate()->heap()->gc_state() == Heap::NOT_IN_GC);
   return function().shared().internal_formal_parameter_count();
@@ -1275,7 +1287,7 @@ int JavaScriptFrame::GetActualArgumentCount() const {
 }
 #endif
 
-Handle<FixedArray> JavaScriptFrame::GetParameters() const {
+Handle<FixedArray> CommonFrameWithJSLinkage::GetParameters() const {
   if (V8_LIKELY(!FLAG_detailed_error_stack_trace)) {
     return isolate()->factory()->empty_fixed_array();
   }
@@ -1287,6 +1299,11 @@ Handle<FixedArray> JavaScriptFrame::GetParameters() const {
   }
 
   return parameters;
+}
+
+JSFunction JavaScriptBuiltinContinuationFrame::function() const {
+  const int offset = BuiltinContinuationFrameConstants::kFunctionOffset;
+  return JSFunction::cast(Object(base::Memory<Address>(fp() + offset)));
 }
 
 int JavaScriptBuiltinContinuationFrame::ComputeParametersCount() const {
@@ -1770,6 +1787,11 @@ int ArgumentsAdaptorFrame::ComputeParametersCount() const {
 
 Code ArgumentsAdaptorFrame::unchecked_code() const {
   return isolate()->builtins()->builtin(Builtins::kArgumentsAdaptorTrampoline);
+}
+
+JSFunction BuiltinFrame::function() const {
+  const int offset = BuiltinFrameConstants::kFunctionOffset;
+  return JSFunction::cast(Object(base::Memory<Address>(fp() + offset)));
 }
 
 int BuiltinFrame::ComputeParametersCount() const {

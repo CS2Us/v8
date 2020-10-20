@@ -1099,9 +1099,7 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
     case kArchDeoptimize: {
       DeoptimizationExit* exit =
           BuildTranslation(instr, -1, 0, OutputFrameStateCombine::Ignore());
-      CodeGenResult result = AssembleDeoptimizerCall(exit);
-      if (result != kSuccess) return result;
-      unwinding_info_writer_.MarkBlockWillExit();
+      __ jmp(exit->label());
       break;
     }
     case kArchRet:
@@ -2396,19 +2394,19 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       break;
     }
     case kX64F64x2Add: {
-      ASSEMBLE_SSE_BINOP(Addpd);
+      ASSEMBLE_SIMD_BINOP(addpd);
       break;
     }
     case kX64F64x2Sub: {
-      ASSEMBLE_SSE_BINOP(Subpd);
+      ASSEMBLE_SIMD_BINOP(subpd);
       break;
     }
     case kX64F64x2Mul: {
-      ASSEMBLE_SSE_BINOP(Mulpd);
+      ASSEMBLE_SIMD_BINOP(mulpd);
       break;
     }
     case kX64F64x2Div: {
-      ASSEMBLE_SSE_BINOP(Divpd);
+      ASSEMBLE_SIMD_BINOP(divpd);
       break;
     }
     case kX64F64x2Min: {
@@ -2451,23 +2449,19 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       break;
     }
     case kX64F64x2Eq: {
-      DCHECK_EQ(i.OutputSimd128Register(), i.InputSimd128Register(0));
-      __ Cmpeqpd(i.OutputSimd128Register(), i.InputSimd128Register(1));
+      ASSEMBLE_SIMD_BINOP(cmpeqpd);
       break;
     }
     case kX64F64x2Ne: {
-      DCHECK_EQ(i.OutputSimd128Register(), i.InputSimd128Register(0));
-      __ Cmpneqpd(i.OutputSimd128Register(), i.InputSimd128Register(1));
+      ASSEMBLE_SIMD_BINOP(cmpneqpd);
       break;
     }
     case kX64F64x2Lt: {
-      DCHECK_EQ(i.OutputSimd128Register(), i.InputSimd128Register(0));
-      __ Cmpltpd(i.OutputSimd128Register(), i.InputSimd128Register(1));
+      ASSEMBLE_SIMD_BINOP(cmpltpd);
       break;
     }
     case kX64F64x2Le: {
-      DCHECK_EQ(i.OutputSimd128Register(), i.InputSimd128Register(0));
-      __ Cmplepd(i.OutputSimd128Register(), i.InputSimd128Register(1));
+      ASSEMBLE_SIMD_BINOP(cmplepd);
       break;
     }
     case kX64F64x2Qfma: {
@@ -2496,21 +2490,29 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       }
       break;
     }
-    // TODO(gdeepti): Get rid of redundant moves for F32x4Splat/Extract below
     case kX64F32x4Splat: {
       XMMRegister dst = i.OutputSimd128Register();
-      if (instr->InputAt(0)->IsFPRegister()) {
-        __ Movss(dst, i.InputDoubleRegister(0));
+      XMMRegister src = i.InputDoubleRegister(0);
+      if (CpuFeatures::IsSupported(AVX)) {
+        CpuFeatureScope avx_scope(tasm(), AVX);
+        __ vshufps(dst, src, src, byte{0x0});
       } else {
-        __ Movss(dst, i.InputOperand(0));
+        DCHECK_EQ(dst, src);
+        __ Shufps(dst, dst, byte{0x0});
       }
-      __ Shufps(dst, dst, byte{0x0});
       break;
     }
     case kX64F32x4ExtractLane: {
-      __ Extractps(kScratchRegister, i.InputSimd128Register(0),
-                   i.InputUint8(1));
-      __ Movd(i.OutputDoubleRegister(), kScratchRegister);
+      if (CpuFeatures::IsSupported(AVX)) {
+        CpuFeatureScope avx_scope(tasm(), AVX);
+        XMMRegister src = i.InputSimd128Register(0);
+        // vshufps and leave junk in the 3 high lanes.
+        __ vshufps(i.OutputDoubleRegister(), src, src, i.InputInt8(1));
+      } else {
+        __ extractps(kScratchRegister, i.InputSimd128Register(0),
+                     i.InputUint8(1));
+        __ movd(i.OutputDoubleRegister(), kScratchRegister);
+      }
       break;
     }
     case kX64F32x4ReplaceLane: {
@@ -2644,25 +2646,19 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       break;
     }
     case kX64F32x4Eq: {
-      DCHECK_EQ(i.OutputSimd128Register(), i.InputSimd128Register(0));
-      __ Cmpps(i.OutputSimd128Register(), i.InputSimd128Register(1),
-               int8_t{0x0});
+      ASSEMBLE_SIMD_BINOP(cmpeqps);
       break;
     }
     case kX64F32x4Ne: {
-      DCHECK_EQ(i.OutputSimd128Register(), i.InputSimd128Register(0));
-      __ Cmpps(i.OutputSimd128Register(), i.InputSimd128Register(1),
-               int8_t{0x4});
+      ASSEMBLE_SIMD_BINOP(cmpneqps);
       break;
     }
     case kX64F32x4Lt: {
-      DCHECK_EQ(i.OutputSimd128Register(), i.InputSimd128Register(0));
-      __ Cmpltps(i.OutputSimd128Register(), i.InputSimd128Register(1));
+      ASSEMBLE_SIMD_BINOP(cmpltps);
       break;
     }
     case kX64F32x4Le: {
-      DCHECK_EQ(i.OutputSimd128Register(), i.InputSimd128Register(0));
-      __ Cmpleps(i.OutputSimd128Register(), i.InputSimd128Register(1));
+      ASSEMBLE_SIMD_BINOP(cmpleps);
       break;
     }
     case kX64F32x4Qfma: {
@@ -2781,13 +2777,11 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       break;
     }
     case kX64I64x2Add: {
-      DCHECK_EQ(i.OutputSimd128Register(), i.InputSimd128Register(0));
-      __ Paddq(i.OutputSimd128Register(), i.InputSimd128Register(1));
+      ASSEMBLE_SIMD_BINOP(paddq);
       break;
     }
     case kX64I64x2Sub: {
-      DCHECK_EQ(i.OutputSimd128Register(), i.InputSimd128Register(0));
-      __ Psubq(i.OutputSimd128Register(), i.InputSimd128Register(1));
+      ASSEMBLE_SIMD_BINOP(psubq);
       break;
     }
     case kX64I64x2Mul: {
@@ -2891,31 +2885,31 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       break;
     }
     case kX64I32x4Add: {
-      __ Paddd(i.OutputSimd128Register(), i.InputSimd128Register(1));
+      ASSEMBLE_SIMD_BINOP(paddd);
       break;
     }
     case kX64I32x4AddHoriz: {
-      __ Phaddd(i.OutputSimd128Register(), i.InputSimd128Register(1));
+      ASSEMBLE_SIMD_BINOP(phaddd);
       break;
     }
     case kX64I32x4Sub: {
-      __ Psubd(i.OutputSimd128Register(), i.InputSimd128Register(1));
+      ASSEMBLE_SIMD_BINOP(psubd);
       break;
     }
     case kX64I32x4Mul: {
-      __ Pmulld(i.OutputSimd128Register(), i.InputSimd128Register(1));
+      ASSEMBLE_SIMD_BINOP(pmulld);
       break;
     }
     case kX64I32x4MinS: {
-      __ Pminsd(i.OutputSimd128Register(), i.InputSimd128Register(1));
+      ASSEMBLE_SIMD_BINOP(pminsd);
       break;
     }
     case kX64I32x4MaxS: {
-      __ Pmaxsd(i.OutputSimd128Register(), i.InputSimd128Register(1));
+      ASSEMBLE_SIMD_BINOP(pmaxsd);
       break;
     }
     case kX64I32x4Eq: {
-      __ Pcmpeqd(i.OutputSimd128Register(), i.InputSimd128Register(1));
+      ASSEMBLE_SIMD_BINOP(pcmpeqd);
       break;
     }
     case kX64I32x4Ne: {
@@ -2926,7 +2920,7 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       break;
     }
     case kX64I32x4GtS: {
-      __ Pcmpgtd(i.OutputSimd128Register(), i.InputSimd128Register(1));
+      ASSEMBLE_SIMD_BINOP(pcmpgtd);
       break;
     }
     case kX64I32x4GeS: {
@@ -2980,11 +2974,11 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       break;
     }
     case kX64I32x4MinU: {
-      __ Pminud(i.OutputSimd128Register(), i.InputSimd128Register(1));
+      ASSEMBLE_SIMD_BINOP(pminud);
       break;
     }
     case kX64I32x4MaxU: {
-      __ Pmaxud(i.OutputSimd128Register(), i.InputSimd128Register(1));
+      ASSEMBLE_SIMD_BINOP(pmaxud);
       break;
     }
     case kX64I32x4GtU: {
@@ -3685,16 +3679,6 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
     case kX64S128Load32x2U: {
       EmitOOLTrapIfNeeded(zone(), this, opcode, instr, __ pc_offset());
       __ Pmovzxdq(i.OutputSimd128Register(), i.MemoryOperand());
-      break;
-    }
-    case kX64S128LoadMem32Zero: {
-      EmitOOLTrapIfNeeded(zone(), this, opcode, instr, __ pc_offset());
-      __ Movd(i.OutputSimd128Register(), i.MemoryOperand());
-      break;
-    }
-    case kX64S128LoadMem64Zero: {
-      EmitOOLTrapIfNeeded(zone(), this, opcode, instr, __ pc_offset());
-      __ Movq(i.OutputSimd128Register(), i.MemoryOperand());
       break;
     }
     case kX64S128Store32Lane: {
@@ -4593,7 +4577,8 @@ void CodeGenerator::AssembleReturn(InstructionOperand* additional_pop_count) {
 
 void CodeGenerator::FinishCode() { tasm()->PatchConstPool(); }
 
-void CodeGenerator::PrepareForDeoptimizationExits(int deopt_count) {}
+void CodeGenerator::PrepareForDeoptimizationExits(
+    ZoneDeque<DeoptimizationExit*>* exits) {}
 
 void CodeGenerator::IncrementStackAccessCounter(
     InstructionOperand* source, InstructionOperand* destination) {

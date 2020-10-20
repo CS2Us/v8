@@ -396,14 +396,20 @@ void InstructionSelector::VisitLoadTransform(Node* node) {
     case LoadTransformation::kS128Load32x2U:
       opcode = kIA32S128Load32x2U;
       break;
+    case LoadTransformation::kS128Load32Zero:
+      opcode = kIA32Movss;
+      break;
+    case LoadTransformation::kS128Load64Zero:
+      opcode = kIA32Movsd;
+      break;
     default:
       UNREACHABLE();
   }
 
   // IA32 supports unaligned loads.
-  DCHECK_NE(params.kind, LoadKind::kUnaligned);
+  DCHECK_NE(params.kind, MemoryAccessKind::kUnaligned);
   // Trap handler is not supported on IA32.
-  DCHECK_NE(params.kind, LoadKind::kProtected);
+  DCHECK_NE(params.kind, MemoryAccessKind::kProtected);
 
   IA32OperandGenerator g(this);
   InstructionOperand outputs[1];

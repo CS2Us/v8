@@ -3884,9 +3884,9 @@ LoadTransformation GetLoadTransformation(
     }
     case wasm::LoadTransformationKind::kZeroExtend: {
       if (memtype == MachineType::Int32()) {
-        return LoadTransformation::kS128LoadMem32Zero;
+        return LoadTransformation::kS128Load32Zero;
       } else if (memtype == MachineType::Int64()) {
-        return LoadTransformation::kS128LoadMem64Zero;
+        return LoadTransformation::kS128Load64Zero;
       }
       break;
     }
@@ -3894,18 +3894,18 @@ LoadTransformation GetLoadTransformation(
   UNREACHABLE();
 }
 
-LoadKind GetLoadKind(MachineGraph* mcgraph, MachineType memtype,
-                     bool use_trap_handler) {
+MemoryAccessKind GetMemoryAccessKind(MachineGraph* mcgraph, MachineType memtype,
+                                     bool use_trap_handler) {
   if (memtype.representation() == MachineRepresentation::kWord8 ||
       mcgraph->machine()->UnalignedLoadSupported(memtype.representation())) {
     if (use_trap_handler) {
-      return LoadKind::kProtected;
+      return MemoryAccessKind::kProtected;
     }
-    return LoadKind::kNormal;
+    return MemoryAccessKind::kNormal;
   }
   // TODO(eholk): Support unaligned loads with trap handlers.
   DCHECK(!use_trap_handler);
-  return LoadKind::kUnaligned;
+  return MemoryAccessKind::kUnaligned;
 }
 }  // namespace
 
@@ -3994,13 +3994,14 @@ Node* WasmGraphBuilder::LoadLane(MachineType memtype, Node* value, Node* index,
   index =
       BoundsCheckMem(access_size, index, offset, position, kCanOmitBoundsCheck);
 
-  LoadKind load_kind = GetLoadKind(mcgraph(), memtype, use_trap_handler());
+  MemoryAccessKind load_kind =
+      GetMemoryAccessKind(mcgraph(), memtype, use_trap_handler());
 
   load = SetEffect(graph()->NewNode(
       mcgraph()->machine()->LoadLane(load_kind, memtype, laneidx),
       MemBuffer(offset), index, value, effect(), control()));
 
-  if (load_kind == LoadKind::kProtected) {
+  if (load_kind == MemoryAccessKind::kProtected) {
     SetSourcePosition(load, position);
   }
 
@@ -4029,7 +4030,7 @@ Node* WasmGraphBuilder::LoadTransform(wasm::ValueType type, MachineType memtype,
   // therefore we divide them into separate "load" and "operation" nodes.
   load = LoadTransformBigEndian(type, memtype, transform, index, offset,
                                 alignment, position);
-  USE(GetLoadKind);
+  USE(GetMemoryAccessKind);
 #else
   // Wasm semantics throw on OOB. Introduce explicit bounds check and
   // conditioning when not using the trap handler.
@@ -4042,13 +4043,14 @@ Node* WasmGraphBuilder::LoadTransform(wasm::ValueType type, MachineType memtype,
       BoundsCheckMem(access_size, index, offset, position, kCanOmitBoundsCheck);
 
   LoadTransformation transformation = GetLoadTransformation(memtype, transform);
-  LoadKind load_kind = GetLoadKind(mcgraph(), memtype, use_trap_handler());
+  MemoryAccessKind load_kind =
+      GetMemoryAccessKind(mcgraph(), memtype, use_trap_handler());
 
   load = SetEffect(graph()->NewNode(
       mcgraph()->machine()->LoadTransform(load_kind, transformation),
       MemBuffer(capped_offset), index, effect(), control()));
 
-  if (load_kind == LoadKind::kProtected) {
+  if (load_kind == MemoryAccessKind::kProtected) {
     SetSourcePosition(load, position);
   }
 #endif
@@ -4122,7 +4124,8 @@ Node* WasmGraphBuilder::StoreLane(MachineRepresentation mem_rep, Node* index,
                          position, kCanOmitBoundsCheck);
 
   MachineType memtype = MachineType(mem_rep, MachineSemantic::kNone);
-  LoadKind load_kind = GetLoadKind(mcgraph(), memtype, use_trap_handler());
+  MemoryAccessKind load_kind =
+      GetMemoryAccessKind(mcgraph(), memtype, use_trap_handler());
 
   // {offset} is validated to be within uintptr_t range in {BoundsCheckMem}.
   uintptr_t capped_offset = static_cast<uintptr_t>(offset);
@@ -4131,7 +4134,7 @@ Node* WasmGraphBuilder::StoreLane(MachineRepresentation mem_rep, Node* index,
       mcgraph()->machine()->StoreLane(load_kind, mem_rep, laneidx),
       MemBuffer(capped_offset), index, val, effect(), control()));
 
-  if (load_kind == LoadKind::kProtected) {
+  if (load_kind == MemoryAccessKind::kProtected) {
     SetSourcePosition(store, position);
   }
 
@@ -4650,6 +4653,18 @@ Node* WasmGraphBuilder::SimdOp(wasm::WasmOpcode opcode, Node* const* inputs) {
     case wasm::kExprI64x2ShrU:
       return graph()->NewNode(mcgraph()->machine()->I64x2ShrU(), inputs[0],
                               inputs[1]);
+    case wasm::kExprI64x2ExtMulLowI32x4S:
+      return graph()->NewNode(mcgraph()->machine()->I64x2ExtMulLowI32x4S(),
+                              inputs[0], inputs[1]);
+    case wasm::kExprI64x2ExtMulHighI32x4S:
+      return graph()->NewNode(mcgraph()->machine()->I64x2ExtMulHighI32x4S(),
+                              inputs[0], inputs[1]);
+    case wasm::kExprI64x2ExtMulLowI32x4U:
+      return graph()->NewNode(mcgraph()->machine()->I64x2ExtMulLowI32x4U(),
+                              inputs[0], inputs[1]);
+    case wasm::kExprI64x2ExtMulHighI32x4U:
+      return graph()->NewNode(mcgraph()->machine()->I64x2ExtMulHighI32x4U(),
+                              inputs[0], inputs[1]);
     case wasm::kExprI32x4Splat:
       return graph()->NewNode(mcgraph()->machine()->I32x4Splat(), inputs[0]);
     case wasm::kExprI32x4SConvertF32x4:
@@ -4742,6 +4757,18 @@ Node* WasmGraphBuilder::SimdOp(wasm::WasmOpcode opcode, Node* const* inputs) {
     case wasm::kExprI32x4DotI16x8S:
       return graph()->NewNode(mcgraph()->machine()->I32x4DotI16x8S(), inputs[0],
                               inputs[1]);
+    case wasm::kExprI32x4ExtMulLowI16x8S:
+      return graph()->NewNode(mcgraph()->machine()->I32x4ExtMulLowI16x8S(),
+                              inputs[0], inputs[1]);
+    case wasm::kExprI32x4ExtMulHighI16x8S:
+      return graph()->NewNode(mcgraph()->machine()->I32x4ExtMulHighI16x8S(),
+                              inputs[0], inputs[1]);
+    case wasm::kExprI32x4ExtMulLowI16x8U:
+      return graph()->NewNode(mcgraph()->machine()->I32x4ExtMulLowI16x8U(),
+                              inputs[0], inputs[1]);
+    case wasm::kExprI32x4ExtMulHighI16x8U:
+      return graph()->NewNode(mcgraph()->machine()->I32x4ExtMulHighI16x8U(),
+                              inputs[0], inputs[1]);
     case wasm::kExprI16x8Splat:
       return graph()->NewNode(mcgraph()->machine()->I16x8Splat(), inputs[0]);
     case wasm::kExprI16x8SConvertI8x16Low:
@@ -4849,6 +4876,18 @@ Node* WasmGraphBuilder::SimdOp(wasm::WasmOpcode opcode, Node* const* inputs) {
       return graph()->NewNode(mcgraph()->machine()->I16x8Abs(), inputs[0]);
     case wasm::kExprI16x8BitMask:
       return graph()->NewNode(mcgraph()->machine()->I16x8BitMask(), inputs[0]);
+    case wasm::kExprI16x8ExtMulLowI8x16S:
+      return graph()->NewNode(mcgraph()->machine()->I16x8ExtMulLowI8x16S(),
+                              inputs[0], inputs[1]);
+    case wasm::kExprI16x8ExtMulHighI8x16S:
+      return graph()->NewNode(mcgraph()->machine()->I16x8ExtMulHighI8x16S(),
+                              inputs[0], inputs[1]);
+    case wasm::kExprI16x8ExtMulLowI8x16U:
+      return graph()->NewNode(mcgraph()->machine()->I16x8ExtMulLowI8x16U(),
+                              inputs[0], inputs[1]);
+    case wasm::kExprI16x8ExtMulHighI8x16U:
+      return graph()->NewNode(mcgraph()->machine()->I16x8ExtMulHighI8x16U(),
+                              inputs[0], inputs[1]);
     case wasm::kExprI8x16Splat:
       return graph()->NewNode(mcgraph()->machine()->I8x16Splat(), inputs[0]);
     case wasm::kExprI8x16Neg:
@@ -6716,11 +6755,9 @@ class WasmWrapperGraphBuilder : public WasmGraphBuilder {
                                 args.begin());
         break;
       }
-      case WasmImportCallKind::kJSFunctionArityMismatchSkipAdaptor:
-        UNREACHABLE();
 #else
       // =======================================================================
-      // === JS Functions with arguments adapter ===============================
+      // === JS Functions with mismatching arity ===============================
       // =======================================================================
       case WasmImportCallKind::kJSFunctionArityMismatch: {
         base::SmallVector<Node*, 16> args(wasm_count + 9);
@@ -6759,47 +6796,6 @@ class WasmWrapperGraphBuilder : public WasmGraphBuilder {
 
         // Convert wasm numbers to JS values.
         pos = AddArgumentNodes(VectorOf(args), pos, wasm_count, sig_);
-        args[pos++] = function_context;
-        args[pos++] = effect();
-        args[pos++] = control();
-
-        DCHECK_EQ(pos, args.size());
-        call = graph()->NewNode(mcgraph()->common()->Call(call_descriptor), pos,
-                                args.begin());
-        break;
-      }
-      // =======================================================================
-      // === JS Functions without arguments adapter ============================
-      // =======================================================================
-      case WasmImportCallKind::kJSFunctionArityMismatchSkipAdaptor: {
-        base::SmallVector<Node*, 16> args(expected_arity + 7);
-        int pos = 0;
-        Node* function_context =
-            gasm_->Load(MachineType::TaggedPointer(), callable_node,
-                        wasm::ObjectAccess::ContextOffsetInTaggedJSFunction());
-        args[pos++] = callable_node;  // target callable.
-
-        // Determine receiver at runtime.
-        args[pos++] =
-            BuildReceiverNode(callable_node, native_context, undefined_node);
-
-        auto call_descriptor = Linkage::GetJSCallDescriptor(
-            graph()->zone(), false, expected_arity + 1,
-            CallDescriptor::kNoFlags);
-
-        // Convert wasm numbers to JS values.
-        if (expected_arity <= wasm_count) {
-          pos = AddArgumentNodes(VectorOf(args), pos, expected_arity, sig_);
-        } else {
-          pos = AddArgumentNodes(VectorOf(args), pos, wasm_count, sig_);
-          for (int i = wasm_count; i < expected_arity; ++i) {
-            args[pos++] = undefined_node;
-          }
-        }
-
-        args[pos++] = undefined_node;  // new target
-        args[pos++] =
-            mcgraph()->Int32Constant(expected_arity);  // argument count
         args[pos++] = function_context;
         args[pos++] = effect();
         args[pos++] = control();

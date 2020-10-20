@@ -158,6 +158,14 @@ void VisitRRR(InstructionSelector* selector, ArchOpcode opcode, Node* node) {
                  g.UseRegister(node->InputAt(1)));
 }
 
+void VisitRRR(InstructionSelector* selector, InstructionCode opcode,
+              Node* node) {
+  Arm64OperandGenerator g(selector);
+  selector->Emit(opcode, g.DefineAsRegister(node),
+                 g.UseRegister(node->InputAt(0)),
+                 g.UseRegister(node->InputAt(1)));
+}
+
 void VisitSimdShiftRRR(InstructionSelector* selector, ArchOpcode opcode,
                        Node* node, int width) {
   Arm64OperandGenerator g(selector);
@@ -651,17 +659,17 @@ void InstructionSelector::VisitLoadTransform(Node* node) {
     case LoadTransformation::kS128Load32x2U:
       opcode = kArm64S128Load32x2U;
       break;
-    case LoadTransformation::kS128LoadMem32Zero:
-      opcode = kArm64S128LoadMem32Zero;
+    case LoadTransformation::kS128Load32Zero:
+      opcode = kArm64S128Load32Zero;
       break;
-    case LoadTransformation::kS128LoadMem64Zero:
-      opcode = kArm64S128LoadMem64Zero;
+    case LoadTransformation::kS128Load64Zero:
+      opcode = kArm64S128Load64Zero;
       break;
     default:
       UNIMPLEMENTED();
   }
   // ARM64 supports unaligned loads
-  DCHECK_NE(params.kind, LoadKind::kUnaligned);
+  DCHECK_NE(params.kind, MemoryAccessKind::kUnaligned);
 
   Arm64OperandGenerator g(this);
   Node* base = node->InputAt(0);
@@ -1637,6 +1645,63 @@ void InstructionSelector::VisitInt64Mul(Node* node) {
   }
 
   VisitRRR(this, kArm64Mul, node);
+}
+
+namespace {
+void VisitExtMul(InstructionSelector* selector, ArchOpcode opcode, Node* node,
+                 int dst_lane_size) {
+  InstructionCode code = opcode;
+  code |= MiscField::encode(dst_lane_size);
+  VisitRRR(selector, code, node);
+}
+}  // namespace
+
+void InstructionSelector::VisitI16x8ExtMulLowI8x16S(Node* node) {
+  VisitExtMul(this, kArm64Smull, node, 16);
+}
+
+void InstructionSelector::VisitI16x8ExtMulHighI8x16S(Node* node) {
+  VisitExtMul(this, kArm64Smull2, node, 16);
+}
+
+void InstructionSelector::VisitI16x8ExtMulLowI8x16U(Node* node) {
+  VisitExtMul(this, kArm64Umull, node, 16);
+}
+
+void InstructionSelector::VisitI16x8ExtMulHighI8x16U(Node* node) {
+  VisitExtMul(this, kArm64Umull2, node, 16);
+}
+
+void InstructionSelector::VisitI32x4ExtMulLowI16x8S(Node* node) {
+  VisitExtMul(this, kArm64Smull, node, 32);
+}
+
+void InstructionSelector::VisitI32x4ExtMulHighI16x8S(Node* node) {
+  VisitExtMul(this, kArm64Smull2, node, 32);
+}
+
+void InstructionSelector::VisitI32x4ExtMulLowI16x8U(Node* node) {
+  VisitExtMul(this, kArm64Umull, node, 32);
+}
+
+void InstructionSelector::VisitI32x4ExtMulHighI16x8U(Node* node) {
+  VisitExtMul(this, kArm64Umull2, node, 32);
+}
+
+void InstructionSelector::VisitI64x2ExtMulLowI32x4S(Node* node) {
+  VisitExtMul(this, kArm64Smull, node, 64);
+}
+
+void InstructionSelector::VisitI64x2ExtMulHighI32x4S(Node* node) {
+  VisitExtMul(this, kArm64Smull2, node, 64);
+}
+
+void InstructionSelector::VisitI64x2ExtMulLowI32x4U(Node* node) {
+  VisitExtMul(this, kArm64Umull, node, 64);
+}
+
+void InstructionSelector::VisitI64x2ExtMulHighI32x4U(Node* node) {
+  VisitExtMul(this, kArm64Umull2, node, 64);
 }
 
 void InstructionSelector::VisitInt32MulHigh(Node* node) {

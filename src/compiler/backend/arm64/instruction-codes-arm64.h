@@ -40,7 +40,9 @@ namespace compiler {
   V(Arm64Mul)                               \
   V(Arm64Mul32)                             \
   V(Arm64Smull)                             \
+  V(Arm64Smull2)                            \
   V(Arm64Umull)                             \
+  V(Arm64Umull2)                            \
   V(Arm64Madd)                              \
   V(Arm64Madd32)                            \
   V(Arm64Msub)                              \
@@ -371,8 +373,8 @@ namespace compiler {
   V(Arm64S128Load16x4U)                     \
   V(Arm64S128Load32x2S)                     \
   V(Arm64S128Load32x2U)                     \
-  V(Arm64S128LoadMem32Zero)                 \
-  V(Arm64S128LoadMem64Zero)                 \
+  V(Arm64S128Load32Zero)                    \
+  V(Arm64S128Load64Zero)                    \
   V(Arm64Word64AtomicLoadUint8)             \
   V(Arm64Word64AtomicLoadUint16)            \
   V(Arm64Word64AtomicLoadUint32)            \

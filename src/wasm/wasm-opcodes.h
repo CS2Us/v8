@@ -460,8 +460,8 @@ bool V8_EXPORT_PRIVATE IsJSCompatibleSignature(const FunctionSig* sig,
   V(F64x2NearestInt, 0xfddf, s_s)
 
 #define FOREACH_SIMD_POST_MVP_MEM_OPCODE(V) \
-  V(S128LoadMem32Zero, 0xfdfc, s_i)         \
-  V(S128LoadMem64Zero, 0xfdfd, s_i)         \
+  V(S128Load32Zero, 0xfdfc, s_i)            \
+  V(S128Load64Zero, 0xfdfd, s_i)            \
   V(S128Load8Lane, 0xfd58, s_is)            \
   V(S128Load16Lane, 0xfd59, s_is)           \
   V(S128Load32Lane, 0xfd5a, s_is)           \
@@ -475,6 +475,18 @@ bool V8_EXPORT_PRIVATE IsJSCompatibleSignature(const FunctionSig* sig,
   V(I8x16Mul, 0xfd75, s_ss)              \
   V(I8x16Popcnt, 0xfd7c, s_s)            \
   V(I16x8Q15MulRSatS, 0xfd9c, s_ss)      \
+  V(I16x8ExtMulLowI8x16S, 0xfd9a, s_ss)  \
+  V(I16x8ExtMulHighI8x16S, 0xfd9d, s_ss) \
+  V(I16x8ExtMulLowI8x16U, 0xfd9e, s_ss)  \
+  V(I16x8ExtMulHighI8x16U, 0xfd9f, s_ss) \
+  V(I32x4ExtMulLowI16x8S, 0xfdbb, s_ss)  \
+  V(I32x4ExtMulHighI16x8S, 0xfdbd, s_ss) \
+  V(I32x4ExtMulLowI16x8U, 0xfdbe, s_ss)  \
+  V(I32x4ExtMulHighI16x8U, 0xfdbf, s_ss) \
+  V(I64x2ExtMulLowI32x4S, 0xfdd2, s_ss)  \
+  V(I64x2ExtMulHighI32x4S, 0xfdd3, s_ss) \
+  V(I64x2ExtMulLowI32x4U, 0xfdd6, s_ss)  \
+  V(I64x2ExtMulHighI32x4U, 0xfdd7, s_ss) \
   V(I64x2Eq, 0xfdc0, s_ss)               \
   V(F32x4Qfma, 0xfdb4, s_sss)            \
   V(I64x2BitMask, 0xfdc4, i_s)           \

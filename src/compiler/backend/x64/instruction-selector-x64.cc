@@ -378,8 +378,8 @@ void InstructionSelector::VisitLoadLane(Node* node) {
   DCHECK_GE(5, input_count);
 
   // x64 supports unaligned loads.
-  DCHECK_NE(params.kind, LoadKind::kUnaligned);
-  if (params.kind == LoadKind::kProtected) {
+  DCHECK_NE(params.kind, MemoryAccessKind::kUnaligned);
+  if (params.kind == MemoryAccessKind::kProtected) {
     opcode |= MiscField::encode(kMemoryAccessProtected);
   }
   Emit(opcode, 1, outputs, input_count, inputs);
@@ -419,19 +419,19 @@ void InstructionSelector::VisitLoadTransform(Node* node) {
     case LoadTransformation::kS128Load32x2U:
       opcode = kX64S128Load32x2U;
       break;
-    case LoadTransformation::kS128LoadMem32Zero:
-      opcode = kX64S128LoadMem32Zero;
+    case LoadTransformation::kS128Load32Zero:
+      opcode = kX64Movss;
       break;
-    case LoadTransformation::kS128LoadMem64Zero:
-      opcode = kX64S128LoadMem64Zero;
+    case LoadTransformation::kS128Load64Zero:
+      opcode = kX64Movsd;
       break;
     default:
       UNREACHABLE();
   }
   // x64 supports unaligned loads
-  DCHECK_NE(params.kind, LoadKind::kUnaligned);
+  DCHECK_NE(params.kind, MemoryAccessKind::kUnaligned);
   InstructionCode code = opcode;
-  if (params.kind == LoadKind::kProtected) {
+  if (params.kind == MemoryAccessKind::kProtected) {
     code |= MiscField::encode(kMemoryAccessProtected);
   }
   VisitLoad(node, node, code);
@@ -562,7 +562,7 @@ void InstructionSelector::VisitStoreLane(Node* node) {
       g.GetEffectiveAddressMemoryOperand(node, inputs, &input_count);
   opcode |= AddressingModeField::encode(addressing_mode);
 
-  if (params.kind == LoadKind::kProtected) {
+  if (params.kind == MemoryAccessKind::kProtected) {
     opcode |= MiscField::encode(kMemoryAccessProtected);
   }
 
@@ -2796,55 +2796,47 @@ VISIT_ATOMIC_BINOP(Or)
 VISIT_ATOMIC_BINOP(Xor)
 #undef VISIT_ATOMIC_BINOP
 
-#define SIMD_TYPES(V) \
-  V(F64x2)            \
-  V(F32x4)            \
-  V(I64x2)            \
-  V(I32x4)            \
-  V(I16x8)            \
-  V(I8x16)
-
 #define SIMD_BINOP_SSE_AVX_LIST(V) \
+  V(F64x2Add)                      \
+  V(F64x2Sub)                      \
+  V(F64x2Mul)                      \
+  V(F64x2Div)                      \
+  V(F64x2Eq)                       \
+  V(F64x2Ne)                       \
+  V(F64x2Lt)                       \
+  V(F64x2Le)                       \
   V(F32x4Add)                      \
   V(F32x4Sub)                      \
   V(F32x4Mul)                      \
   V(F32x4Div)                      \
+  V(F32x4Eq)                       \
+  V(F32x4Ne)                       \
+  V(F32x4Lt)                       \
+  V(F32x4Le)                       \
+  V(I64x2Add)                      \
+  V(I64x2Sub)                      \
+  V(I32x4Add)                      \
+  V(I32x4AddHoriz)                 \
+  V(I32x4Sub)                      \
+  V(I32x4Mul)                      \
+  V(I32x4MinS)                     \
+  V(I32x4MaxS)                     \
+  V(I32x4Eq)                       \
+  V(I32x4GtS)                      \
+  V(I32x4MinU)                     \
+  V(I32x4MaxU)                     \
   V(S128And)                       \
   V(S128Or)                        \
   V(S128Xor)
 
 #define SIMD_BINOP_LIST(V) \
-  V(F64x2Add)              \
-  V(F64x2Sub)              \
-  V(F64x2Mul)              \
-  V(F64x2Div)              \
   V(F64x2Min)              \
   V(F64x2Max)              \
-  V(F64x2Eq)               \
-  V(F64x2Ne)               \
-  V(F64x2Lt)               \
-  V(F64x2Le)               \
   V(F32x4AddHoriz)         \
   V(F32x4Min)              \
   V(F32x4Max)              \
-  V(F32x4Eq)               \
-  V(F32x4Ne)               \
-  V(F32x4Lt)               \
-  V(F32x4Le)               \
-  V(I64x2Add)              \
-  V(I64x2Sub)              \
   V(I64x2Eq)               \
-  V(I32x4Add)              \
-  V(I32x4AddHoriz)         \
-  V(I32x4Sub)              \
-  V(I32x4Mul)              \
-  V(I32x4MinS)             \
-  V(I32x4MaxS)             \
-  V(I32x4Eq)               \
-  V(I32x4GtS)              \
   V(I32x4GeS)              \
-  V(I32x4MinU)             \
-  V(I32x4MaxU)             \
   V(I32x4GeU)              \
   V(I32x4DotI16x8S)        \
   V(I16x8SConvertI32x4)    \
@@ -2967,14 +2959,29 @@ void InstructionSelector::VisitS128Zero(Node* node) {
   Emit(kX64S128Zero, g.DefineAsRegister(node));
 }
 
+#define SIMD_TYPES_FOR_SPLAT(V) \
+  V(F64x2)                      \
+  V(I64x2)                      \
+  V(I32x4)                      \
+  V(I16x8)                      \
+  V(I8x16)
+
 #define VISIT_SIMD_SPLAT(Type)                               \
   void InstructionSelector::Visit##Type##Splat(Node* node) { \
     X64OperandGenerator g(this);                             \
     Emit(kX64##Type##Splat, g.DefineAsRegister(node),        \
          g.Use(node->InputAt(0)));                           \
   }
-SIMD_TYPES(VISIT_SIMD_SPLAT)
+SIMD_TYPES_FOR_SPLAT(VISIT_SIMD_SPLAT)
 #undef VISIT_SIMD_SPLAT
+#undef SIMD_TYPES_FOR_SPLAT
+
+void InstructionSelector::VisitF32x4Splat(Node* node) {
+  X64OperandGenerator g(this);
+  InstructionOperand dst =
+      IsSupported(AVX) ? g.DefineAsRegister(node) : g.DefineSameAsFirst(node);
+  Emit(kX64F32x4Splat, dst, g.UseRegister(node->InputAt(0)));
+}
 
 #define SIMD_VISIT_EXTRACT_LANE(Type, Sign)                              \
   void InstructionSelector::Visit##Type##ExtractLane##Sign(Node* node) { \
@@ -3124,7 +3131,6 @@ SIMD_ANYTRUE_LIST(VISIT_SIMD_ANYTRUE)
 SIMD_ALLTRUE_LIST(VISIT_SIMD_ALLTRUE)
 #undef VISIT_SIMD_ALLTRUE
 #undef SIMD_ALLTRUE_LIST
-#undef SIMD_TYPES
 
 void InstructionSelector::VisitS128Select(Node* node) {
   X64OperandGenerator g(this);

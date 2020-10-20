@@ -157,10 +157,6 @@ MaybeHandle<Code> Factory::CodeBuilder::BuildInternal(
       if (result.is_null()) return MaybeHandle<Code>();
     }
 
-    if (!is_movable_) {
-      result = heap->EnsureImmovableCode(result, object_size);
-    }
-
     // The code object has not been fully initialized yet.  We rely on the
     // fact that no allocation will happen from this point on.
     DisallowHeapAllocation no_gc;
@@ -540,18 +536,20 @@ Handle<SmallOrderedNameDictionary> Factory::NewSmallOrderedNameDictionary(
 }
 
 Handle<OrderedHashSet> Factory::NewOrderedHashSet() {
-  return OrderedHashSet::Allocate(isolate(), OrderedHashSet::kMinCapacity)
+  return OrderedHashSet::Allocate(isolate(),
+                                  OrderedHashSet::kMinNonZeroCapacity)
       .ToHandleChecked();
 }
 
 Handle<OrderedHashMap> Factory::NewOrderedHashMap() {
-  return OrderedHashMap::Allocate(isolate(), OrderedHashMap::kMinCapacity)
+  return OrderedHashMap::Allocate(isolate(),
+                                  OrderedHashMap::kMinNonZeroCapacity)
       .ToHandleChecked();
 }
 
 Handle<OrderedNameDictionary> Factory::NewOrderedNameDictionary() {
-  return OrderedNameDictionary::Allocate(isolate(),
-                                         OrderedNameDictionary::kMinCapacity)
+  return OrderedNameDictionary::Allocate(
+             isolate(), OrderedNameDictionary::kMinNonZeroCapacity)
       .ToHandleChecked();
 }
 

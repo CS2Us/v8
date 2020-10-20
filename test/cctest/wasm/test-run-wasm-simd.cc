@@ -414,6 +414,14 @@ bool IsExtreme(float x) {
          (abs_x < kSmallFloatThreshold || abs_x > kLargeFloatThreshold);
 }
 
+#if V8_OS_AIX
+template <typename T>
+bool MightReverseSign(T float_op) {
+  return float_op == static_cast<T>(Negate) ||
+         float_op == static_cast<T>(std::abs);
+}
+#endif
+
 WASM_SIMD_TEST(S128Globals) {
   WasmRunner<int32_t> r(execution_tier, lower_simd);
   // Set up a global to hold input and output vectors.
@@ -587,7 +595,8 @@ void RunF32x4UnOpTest(TestExecutionTier execution_tier, LowerSimd lower_simd,
     if (!exact && IsExtreme(x)) continue;
     float expected = expected_op(x);
 #if V8_OS_AIX
-    expected = FpOpWorkaround<float>(x, expected);
+    if (!MightReverseSign<FloatUnOp>(expected_op))
+      expected = FpOpWorkaround<float>(x, expected);
 #endif
     if (!PlatformCanRepresent(expected)) continue;
     r.Call(x);
@@ -1180,7 +1189,8 @@ void RunF64x2UnOpTest(TestExecutionTier execution_tier, LowerSimd lower_simd,
     if (!exact && IsExtreme(x)) continue;
     double expected = expected_op(x);
 #if V8_OS_AIX
-    expected = FpOpWorkaround<double>(x, expected);
+    if (!MightReverseSign<DoubleUnOp>(expected_op))
+      expected = FpOpWorkaround<double>(x, expected);
 #endif
     if (!PlatformCanRepresent(expected)) continue;
     r.Call(x);
@@ -2220,12 +2230,124 @@ WASM_SIMD_TEST(I16x8RoundingAverageU) {
                               base::RoundingAverageUnsigned);
 }
 
-// TODO(v8:10971) Prototype i16x8.q15mulr_sat_s
 #if V8_TARGET_ARCH_ARM64
+// TODO(v8:10971) Prototype i16x8.q15mulr_sat_s
 WASM_SIMD_TEST_NO_LOWERING(I16x8Q15MulRSatS) {
   FLAG_SCOPE(wasm_simd_post_mvp);
   RunI16x8BinOpTest<int16_t>(execution_tier, lower_simd, kExprI16x8Q15MulRSatS,
                              SaturateRoundingQMul<int16_t>);
+}
+
+// TODO(v8:11008) Prototype extended multiplication.
+namespace {
+enum class MulHalf { kLow, kHigh };
+
+// Helper to run ext mul tests. It will splat 2 input values into 2 v128, call
+// the mul op on these operands, and set the result into a global.
+// It will zero the top or bottom half of one of the operands, this will catch
+// mistakes if we are multiply the incorrect halves.
+template <typename S, typename T, typename OpType = T (*)(S, S)>
+void RunExtMulTest(TestExecutionTier execution_tier, LowerSimd lower_simd,
+                   WasmOpcode opcode, OpType expected_op, WasmOpcode splat,
+                   MulHalf half) {
+  FLAG_SCOPE(wasm_simd_post_mvp);
+  WasmRunner<int32_t, S, S> r(execution_tier, lower_simd);
+  int lane_to_zero = half == MulHalf::kLow ? 1 : 0;
+  T* g = r.builder().template AddGlobal<T>(kWasmS128);
+
+  BUILD(r,
+        WASM_SET_GLOBAL(
+            0, WASM_SIMD_BINOP(
+                   opcode,
+                   WASM_SIMD_I64x2_REPLACE_LANE(
+                       lane_to_zero, WASM_SIMD_UNOP(splat, WASM_GET_LOCAL(0)),
+                       WASM_I64V_1(0)),
+                   WASM_SIMD_UNOP(splat, WASM_GET_LOCAL(1)))),
+        WASM_ONE);
+
+  constexpr int lanes = kSimd128Size / sizeof(T);
+  for (S x : compiler::ValueHelper::GetVector<S>()) {
+    for (S y : compiler::ValueHelper::GetVector<S>()) {
+      r.Call(x, y);
+      T expected = expected_op(x, y);
+      for (int i = 0; i < lanes; i++) {
+        CHECK_EQ(expected, ReadLittleEndianValue<T>(&g[i]));
+      }
+    }
+  }
+}
+}  // namespace
+
+WASM_SIMD_TEST_NO_LOWERING(I16x8ExtMulLowI8x16S) {
+  RunExtMulTest<int8_t, int16_t>(execution_tier, lower_simd,
+                                 kExprI16x8ExtMulLowI8x16S, MultiplyLong,
+                                 kExprI8x16Splat, MulHalf::kLow);
+}
+
+WASM_SIMD_TEST_NO_LOWERING(I16x8ExtMulHighI8x16S) {
+  RunExtMulTest<int8_t, int16_t>(execution_tier, lower_simd,
+                                 kExprI16x8ExtMulHighI8x16S, MultiplyLong,
+                                 kExprI8x16Splat, MulHalf::kHigh);
+}
+
+WASM_SIMD_TEST_NO_LOWERING(I16x8ExtMulLowI8x16U) {
+  RunExtMulTest<uint8_t, uint16_t>(execution_tier, lower_simd,
+                                   kExprI16x8ExtMulLowI8x16U, MultiplyLong,
+                                   kExprI8x16Splat, MulHalf::kLow);
+}
+
+WASM_SIMD_TEST_NO_LOWERING(I16x8ExtMulHighI8x16U) {
+  RunExtMulTest<uint8_t, uint16_t>(execution_tier, lower_simd,
+                                   kExprI16x8ExtMulHighI8x16U, MultiplyLong,
+                                   kExprI8x16Splat, MulHalf::kHigh);
+}
+
+WASM_SIMD_TEST_NO_LOWERING(I32x4ExtMulLowI16x8S) {
+  RunExtMulTest<int16_t, int32_t>(execution_tier, lower_simd,
+                                  kExprI32x4ExtMulLowI16x8S, MultiplyLong,
+                                  kExprI16x8Splat, MulHalf::kLow);
+}
+
+WASM_SIMD_TEST_NO_LOWERING(I32x4ExtMulHighI16x8S) {
+  RunExtMulTest<int16_t, int32_t>(execution_tier, lower_simd,
+                                  kExprI32x4ExtMulHighI16x8S, MultiplyLong,
+                                  kExprI16x8Splat, MulHalf::kHigh);
+}
+
+WASM_SIMD_TEST_NO_LOWERING(I32x4ExtMulLowI16x8U) {
+  RunExtMulTest<uint16_t, uint32_t>(execution_tier, lower_simd,
+                                    kExprI32x4ExtMulLowI16x8U, MultiplyLong,
+                                    kExprI16x8Splat, MulHalf::kLow);
+}
+
+WASM_SIMD_TEST_NO_LOWERING(I32x4ExtMulHighI16x8U) {
+  RunExtMulTest<uint16_t, uint32_t>(execution_tier, lower_simd,
+                                    kExprI32x4ExtMulHighI16x8U, MultiplyLong,
+                                    kExprI16x8Splat, MulHalf::kHigh);
+}
+
+WASM_SIMD_TEST_NO_LOWERING(I64x2ExtMulLowI32x4S) {
+  RunExtMulTest<int32_t, int64_t>(execution_tier, lower_simd,
+                                  kExprI64x2ExtMulLowI32x4S, MultiplyLong,
+                                  kExprI32x4Splat, MulHalf::kLow);
+}
+
+WASM_SIMD_TEST_NO_LOWERING(I64x2ExtMulHighI32x4S) {
+  RunExtMulTest<int32_t, int64_t>(execution_tier, lower_simd,
+                                  kExprI64x2ExtMulHighI32x4S, MultiplyLong,
+                                  kExprI32x4Splat, MulHalf::kHigh);
+}
+
+WASM_SIMD_TEST_NO_LOWERING(I64x2ExtMulLowI32x4U) {
+  RunExtMulTest<uint32_t, uint64_t>(execution_tier, lower_simd,
+                                    kExprI64x2ExtMulLowI32x4U, MultiplyLong,
+                                    kExprI32x4Splat, MulHalf::kLow);
+}
+
+WASM_SIMD_TEST_NO_LOWERING(I64x2ExtMulHighI32x4U) {
+  RunExtMulTest<uint32_t, uint64_t>(execution_tier, lower_simd,
+                                    kExprI64x2ExtMulHighI32x4U, MultiplyLong,
+                                    kExprI32x4Splat, MulHalf::kHigh);
 }
 #endif  // V8_TARGET_ARCH_ARM64
 
@@ -3575,7 +3697,7 @@ WASM_SIMD_TEST(S128Load32x2S) {
 }
 
 // TODO(v8:10713): Prototyping v128.load32_zero and v128.load64_zero.
-#if V8_TARGET_ARCH_X64 || V8_TARGET_ARCH_ARM64
+#if V8_TARGET_ARCH_X64 || V8_TARGET_ARCH_ARM64 || V8_TARGET_ARCH_IA32
 template <typename S>
 void RunLoadZeroTest(TestExecutionTier execution_tier, LowerSimd lower_simd,
                      WasmOpcode op) {
@@ -3600,14 +3722,14 @@ void RunLoadZeroTest(TestExecutionTier execution_tier, LowerSimd lower_simd,
   }
 }
 
-WASM_SIMD_TEST_NO_LOWERING(S128LoadMem32Zero) {
-  RunLoadZeroTest<int32_t>(execution_tier, lower_simd, kExprS128LoadMem32Zero);
+WASM_SIMD_TEST_NO_LOWERING(S128Load32Zero) {
+  RunLoadZeroTest<int32_t>(execution_tier, lower_simd, kExprS128Load32Zero);
 }
 
-WASM_SIMD_TEST_NO_LOWERING(S128LoadMem64Zero) {
-  RunLoadZeroTest<int64_t>(execution_tier, lower_simd, kExprS128LoadMem64Zero);
+WASM_SIMD_TEST_NO_LOWERING(S128Load64Zero) {
+  RunLoadZeroTest<int64_t>(execution_tier, lower_simd, kExprS128Load64Zero);
 }
-#endif  // V8_TARGET_ARCH_X64 || V8_TARGET_ARCH_ARM64
+#endif  // V8_TARGET_ARCH_X64 || V8_TARGET_ARCH_ARM64 || V8_TARGET_ARCH_IA32
 
 #if V8_TARGET_ARCH_X64
 // TODO(v8:10975): Prototyping load lane and store lane.

@@ -41,7 +41,9 @@ int InstructionScheduler::GetTargetInstructionFlags(
     case kArm64Mul:
     case kArm64Mul32:
     case kArm64Smull:
+    case kArm64Smull2:
     case kArm64Umull:
+    case kArm64Umull2:
     case kArm64Madd:
     case kArm64Madd32:
     case kArm64Msub:
@@ -361,8 +363,8 @@ int InstructionScheduler::GetTargetInstructionFlags(
     case kArm64S128Load16x4U:
     case kArm64S128Load32x2S:
     case kArm64S128Load32x2U:
-    case kArm64S128LoadMem32Zero:
-    case kArm64S128LoadMem64Zero:
+    case kArm64S128Load32Zero:
+    case kArm64S128Load64Zero:
       return kIsLoadOperation;
 
     case kArm64Claim:
