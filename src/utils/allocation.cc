@@ -162,6 +162,8 @@ void* GetRandomMmapAddr() {
   return GetPlatformPageAllocator()->GetRandomMmapAddr();
 }
 
+/** MemoryAllocator申请虚拟内存VirtualMemory, VirtualMemory对size，alignment进行相应对齐操作之后，
+ * 正式进入内存分配阶段，就是此处 **/
 void* AllocatePages(v8::PageAllocator* page_allocator, void* hint, size_t size,
                     size_t alignment, PageAllocator::Permission access) {
   DCHECK_NOT_NULL(page_allocator);
@@ -222,6 +224,7 @@ VirtualMemory::VirtualMemory(v8::PageAllocator* page_allocator, size_t size,
   /** 此处检查是多检查了一遍，实际上MemoryAllocator调用此处已经对参数size做了对齐操作 **/
   DCHECK(IsAligned(size, page_allocator_->CommitPageSize()));
   size_t page_size = page_allocator_->AllocatePageSize();
+  /** 此处的对齐也是多检查了一遍，实际上MemoryAllocator过来的alignment是2^18次方，符合内存对齐规则, RoundUp的最小对齐最高也不会超过2^18次方 **/
   alignment = RoundUp(alignment, page_size);
   PageAllocator::Permission permissions =
       jit == kMapAsJittable ? PageAllocator::kNoAccessWillJitLater

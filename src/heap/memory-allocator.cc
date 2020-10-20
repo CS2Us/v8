@@ -339,6 +339,7 @@ void MemoryAllocator::FreeMemory(v8::PageAllocator* page_allocator,
   CHECK(FreePages(page_allocator, reinterpret_cast<void*>(base), size));
 }
 
+/** MemoryAllocator定义chunksize，alignment内存对齐规则，hint基地址，之后申请分配虚拟内存VirtualMemory **/
 Address MemoryAllocator::AllocateAlignedMemory(
     size_t reserve_size, size_t commit_size, size_t alignment,
     Executability executable, void* hint, VirtualMemory* controller) {
