@@ -3524,6 +3524,7 @@ bool Isolate::Init(SnapshotData* startup_snapshot_data,
 
   // SetUp the object heap.
   DCHECK(!heap_.HasBeenSetUp());
+  /** 每个Isolate都有单独的堆， 此处初始化堆内存 **/
   heap_.SetUp();
   ReadOnlyHeap::SetUp(this, read_only_snapshot_data, can_rehash);
   heap_.SetUpSpaces();
