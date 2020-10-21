@@ -231,7 +231,9 @@ template <typename T>
 class LeakyObject {
  public:
   template <typename... Args>
+  /** Todo(guoyiyuan): Args&& 右值引用，如果外部传进来的是个左值呢？ **/
   explicit LeakyObject(Args&&... args) {
+    /** C++ placement syntax, 在&storage_提供的地址上分配对象 **/
     new (&storage_) T(std::forward<Args>(args)...);
   }
 

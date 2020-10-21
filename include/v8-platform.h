@@ -514,6 +514,8 @@ class PageAllocator {
  * The embedder has to provide an implementation of this interface before
  * initializing the rest of V8.
  */
+/** v8内存分配抽象层，linux，win等平台需要基于Platform对象定义基于各自平台上的api实现对应的内存分配,
+ *  因为涉及到对象的内存分配问题，这部分需要在v8初始化前提供 **/
 class Platform {
  public:
   virtual ~Platform() = default;
