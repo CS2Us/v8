@@ -376,7 +376,11 @@ class Heap {
   static constexpr size_t kOldGenerationLowMemory =
       128 * MB * kHeapLimitMultiplier;
   static constexpr size_t kNewLargeObjectSpaceToSemiSpaceRatio = 1;
+  /** 32-bit 机器：512KB  = 2页pagesize
+   *  64-bit 机器：1024KB = 4页pageSize **/
   static constexpr size_t kMinSemiSpaceSize = 512 * KB * kPointerMultiplier;
+  /** 32-bit 机器：8192KB   = 8MB   = 32页pagesize
+   ** 64-bit 机器：16384KB  = 16MB  = 64页pagesize **/
   static constexpr size_t kMaxSemiSpaceSize = 8192 * KB * kPointerMultiplier;
 
   STATIC_ASSERT(kMinSemiSpaceSize % (1 << kPageSizeBits) == 0);

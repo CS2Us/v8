@@ -220,12 +220,24 @@ size_t Heap::MaxReserved() {
 
 size_t Heap::YoungGenerationSizeFromOldGenerationSize(size_t old_generation) {
   // Compute the semi space size and cap it.
+  /** ratio = oldgeneration / semispace **/
   size_t ratio = old_generation <= kOldGenerationLowMemory
                      ? kOldGenerationToSemiSpaceRatioLowMemory
                      : kOldGenerationToSemiSpaceRatio;
   size_t semi_space = old_generation / ratio;
   semi_space = Min<size_t>(semi_space, kMaxSemiSpaceSize);
   semi_space = Max<size_t>(semi_space, kMinSemiSpaceSize);
+  /** Page::kPageSize 为256KB，为2^18次方，
+   * 32-bit机器：
+   * semi_space最大为8MB，为2^23次方，页数最多2^5次方，共32页, 
+   * semi_space最小为512KB，为2^19次方, 页数最少2^1次方，共2页
+   * 最大最小均符合kPageSize对齐
+   * semi_space居于最大最小间，所以需要RoundUp()算出符合kPageSize对齐的最小值，为2页到32页之间的整数值
+   * 64-bit机器：
+   * semi_space最大为16MB，为2^24次方，页数最多2^6次方，共64页, 
+   * semi_space最小为1024KB，为2^20次方, 页数最少2^2次方，共4页
+   * 最大最小均符合kPageSize对齐
+   * semi_space居于最大最小间，所以需要RoundUp()算出符合kPageSize对齐的最小值，为4页到64页之间的整数值 **/
   semi_space = RoundUp(semi_space, Page::kPageSize);
   return YoungGenerationSizeFromSemiSpaceSize(semi_space);
 }
@@ -286,6 +298,7 @@ size_t Heap::AllocatorLimitOnMaxOldGenerationSize() {
          YoungGenerationSizeFromSemiSpaceSize(kMaxSemiSpaceSize) -
          RoundUp(sizeof(Isolate), size_t{1} << kPageSizeBits);
 #endif
+  /** 64位机器 64-bit, 32位机器 32-bit **/
   return std::numeric_limits<size_t>::max();
 }
 
@@ -303,6 +316,7 @@ size_t Heap::MaxOldGenerationSize(uint64_t physical_memory) {
   return Min(max_size, AllocatorLimitOnMaxOldGenerationSize());
 }
 
+/** 新生代space = (semi space * 2) + large object space **/
 size_t Heap::YoungGenerationSizeFromSemiSpaceSize(size_t semi_space_size) {
   return semi_space_size * (2 + kNewLargeObjectSpaceToSemiSpaceRatio);
 }
@@ -4484,11 +4498,14 @@ size_t GlobalMemorySizeFromV8Size(size_t v8_size) {
 void Heap::ConfigureHeap(const v8::ResourceConstraints& constraints) {
   // Initialize max_semi_space_size_.
   {
+    /** 新生代size **/
     max_semi_space_size_ = 8 * (kSystemPointerSize / 4) * MB;
+    /** ResourceConstraints 优先级最低 **/
     if (constraints.max_young_generation_size_in_bytes() > 0) {
       max_semi_space_size_ = SemiSpaceSizeFromYoungGenerationSize(
           constraints.max_young_generation_size_in_bytes());
     }
+    /** Flag 优先级高于 ResourceConstraints **/
     if (FLAG_max_semi_space_size > 0) {
       max_semi_space_size_ = static_cast<size_t>(FLAG_max_semi_space_size) * MB;
     } else if (FLAG_max_heap_size > 0) {
@@ -4520,10 +4537,13 @@ void Heap::ConfigureHeap(const v8::ResourceConstraints& constraints) {
 
   // Initialize max_old_generation_size_ and max_global_memory_.
   {
+    /** 旧生代size **/
     size_t max_old_generation_size = 700ul * (kSystemPointerSize / 4) * MB;
+    /** ResourceConstraints 优先级最低 **/
     if (constraints.max_old_generation_size_in_bytes() > 0) {
       max_old_generation_size = constraints.max_old_generation_size_in_bytes();
     }
+    /** Flag 优先级高于 ResourceConstraints **/
     if (FLAG_max_old_space_size > 0) {
       max_old_generation_size =
           static_cast<size_t>(FLAG_max_old_space_size) * MB;
@@ -4552,9 +4572,12 @@ void Heap::ConfigureHeap(const v8::ResourceConstraints& constraints) {
 
   // Initialize initial_semispace_size_.
   {
+    /** 初始化semispace最少2页pagesize **/
     initial_semispace_size_ = kMinSemiSpaceSize;
     if (max_semi_space_size_ == kMaxSemiSpaceSize) {
       // Start with at least 1*MB semi-space on machines with a lot of memory.
+      /** 1 MB = 2^20次方， pageSize = 256 KB = 2^18次方
+       ** 2^20 - 2^18 = 2^2 = 4, 初始化semispace最少保持在4页pagesize **/
       initial_semispace_size_ =
           Max(initial_semispace_size_, static_cast<size_t>(1 * MB));
     }
