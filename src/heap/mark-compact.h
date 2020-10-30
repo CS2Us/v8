@@ -102,7 +102,7 @@ class LiveObjectRange {
     using pointer = const value_type*;
     using reference = const value_type&;
     using iterator_category = std::forward_iterator_tag;
-
+    /** Bitmap其实为MemoryChunk当中的一段内存 **/
     inline iterator(const MemoryChunk* chunk, Bitmap* bitmap, Address start);
 
     inline iterator& operator++();

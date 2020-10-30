@@ -106,6 +106,11 @@ class V8_EXPORT_PRIVATE Bitmap {
   // The size of the bitmap in bytes is CellsCount() * kBytesPerCell.
   static const size_t kSize;
 
+  /** kBitsPerCell - 1 设计巧妙之处：
+   *  当length = 0，CellsForLength = 0
+   *  当length = kBitsPerCell * n, CellsForLength = n
+   *  当length = kBitsPerCell * n + m [1<=m<=(kBitsPerCell-1)], CellsForLength = n + 1
+   */
   static constexpr size_t CellsForLength(int length) {
     return (length + kBitsPerCell - 1) >> kBitsPerCellLog2;
   }

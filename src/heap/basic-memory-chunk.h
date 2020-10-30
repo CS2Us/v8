@@ -115,6 +115,8 @@ class BasicMemoryChunk {
 
   BasicMemoryChunk(size_t size, Address area_start, Address area_end);
 
+  /** 页内存空间满足kAlignment，因此每个页的基地址都满足n * kAlignment + externalAddress
+   *  4 * 2 + 1, 该页基地址为：9 **/
   static Address BaseAddress(Address a) { return a & ~kAlignmentMask; }
 
   Address address() const { return reinterpret_cast<Address>(this); }

@@ -347,7 +347,7 @@ int Sweeper::RawSweep(
     const base::MutexGuard& page_guard) {
   Space* space = p->owner();
   DCHECK_NOT_NULL(space);
-  /** 页所属的OLD_SPACE, CODE_SPACE, MAP_SPAC可被清除 **/
+  /** 页所属的OLD_SPACE, CODE_SPACE, MAP_SPACE可被清除 **/
   DCHECK(free_list_mode == IGNORE_FREE_LIST || space->identity() == OLD_SPACE ||
          space->identity() == CODE_SPACE || space->identity() == MAP_SPACE);
   DCHECK(!p->IsEvacuationCandidate() && !p->SweepingDone());
