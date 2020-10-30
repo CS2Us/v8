@@ -40,6 +40,7 @@ BasicMemoryChunk* BasicMemoryChunk::Initialize(Heap* heap, Address base,
                                                VirtualMemory reservation) {
   BasicMemoryChunk* chunk = FromAddress(base);
   DCHECK_EQ(base, chunk->address());
+  /** 基于base地址分配BasicMemoryChunk内存空间 **/
   new (chunk) BasicMemoryChunk(size, area_start, area_end);
 
   chunk->heap_ = heap;

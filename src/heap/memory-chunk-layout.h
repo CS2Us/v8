@@ -68,7 +68,9 @@ class V8_EXPORT_PRIVATE MemoryChunkLayout {
 #ifdef V8_ENABLE_CONSERVATIVE_STACK_SCANNING
     FIELD(ObjectStartBitmap, ObjectStartBitmap),
 #endif
+    /** BitmapOffset位置为Guard位置 **/
     kMarkingBitmapOffset,
+    /** MemoryChunk布局高招，枚举的高级用法，通过借用枚举值自增的特性，定义MemoryChunk头部信息 **/
     kMemoryChunkHeaderSize = kMarkingBitmapOffset,
     kMemoryChunkHeaderStart = kSlotSetOffset,
     kBasicMemoryChunkHeaderSize = kMemoryChunkHeaderStart,

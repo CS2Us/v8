@@ -347,6 +347,7 @@ int Sweeper::RawSweep(
     const base::MutexGuard& page_guard) {
   Space* space = p->owner();
   DCHECK_NOT_NULL(space);
+  /** 页所属的OLD_SPACE, CODE_SPACE, MAP_SPAC可被清除 **/
   DCHECK(free_list_mode == IGNORE_FREE_LIST || space->identity() == OLD_SPACE ||
          space->identity() == CODE_SPACE || space->identity() == MAP_SPACE);
   DCHECK(!p->IsEvacuationCandidate() && !p->SweepingDone());
@@ -447,6 +448,9 @@ int Sweeper::RawSweep(
 
 void Sweeper::SweepSpaceFromTask(AllocationSpace identity) {
   Page* page = nullptr;
+  /** 遍历待清除space下的page，每次数组中推出一个page进入清除任务，直到该space下的所有page都进入清除任务，除非中断space清除任务
+   * sweeper维护一个sweepingList[数组记录FirstGrowableSpace -> LastGrowableSpace]，
+   * space wrapper[SweepSpace]维护一个指针数组维护该space下的所有page指针 **/
   while (!stop_sweeper_tasks_ &&
          ((page = GetSweepingPageSafe(identity)) != nullptr)) {
     // Typed slot sets are only recorded on code pages. Code pages
@@ -505,6 +509,7 @@ int Sweeper::ParallelSweepPage(
 
     DCHECK_EQ(Page::ConcurrentSweepingState::kPending,
               page->concurrent_sweeping_state());
+    /** 设置page的页面清除状态 **/
     page->set_concurrent_sweeping_state(
         Page::ConcurrentSweepingState::kInProgress);
     const FreeSpaceTreatmentMode free_space_mode =
